@@ -43,14 +43,6 @@ class Square {
 };
 
 class Cell: public Square {
-    protected:
-
-        Text texton;
-        char mine;
-        bool showed;
-        int amount;
-        ostringstream text;
-
     public:
 
         Cell() : Square() {
@@ -59,14 +51,14 @@ class Cell: public Square {
             amount = 0;
         }
 
-        Cell(int x, int y, int size, Color color, Font &font): Square(x, y, size, size, color) {
+        Cell(int x, int y, int size, Color color, Font &font): Square(x, y, size, size, color), color{color} {
             mine = ' ';
             showed = false;
             amount = 0;
             texton.setFillColor(color);
             texton.setCharacterSize(size);
             texton.setFont(font);
-            texton.setPosition(Vector2f(x, y));
+            texton.setPosition(Vector2f(x+size/4, y-size/10));
             texton.setFillColor(color);
             texton.setString(" ");
         }
@@ -97,7 +89,7 @@ class Cell: public Square {
                 shape.setFillColor(Color(45, 5, 5));
                 texton.setString("*");
             } else {
-                shape.setFillColor(Color(5, 5, 5));
+                shape.setFillColor(Color(5, 5, 45));
             }
         }
 
@@ -108,11 +100,16 @@ class Cell: public Square {
         void write_amount(RenderWindow &window) { //
             window.draw(texton);
         }
-
+    private:
+        Text texton;
+        char mine;
+        bool showed;
+        int amount;
+        Color color;
 };
 
 void field_generate(Cell ****field, int height, int width, Font &farial);
-void mines_spawn(Cell ****field, int x, int y, int height, int width);
+void mines_spawn(Cell ****field, int x, int y, int height, int width, int *all_mines);
 void mines_recursion(Cell ****field, int x, int y, int height, int width, int direction);
 
 class Textbox {
@@ -236,6 +233,16 @@ int main() {
     start.setCharacterSize(40);
     start.setPosition({50, 0});
 
+    Text gameover("Game over", arial);
+    gameover.setFillColor(Color::Black);
+    gameover.setCharacterSize(40);
+    gameover.setPosition({50, 0});
+
+    Text winn("You win!", arial);
+    winn.setFillColor(Color::Black);
+    winn.setCharacterSize(40);
+    winn.setPosition({50, 0});
+
     textbox1.setFont(arial);
     textbox1.setPosition({50, 80});
     textbox2.setFont(arial);
@@ -252,7 +259,9 @@ int main() {
     Cell ***cells;
     int size_y = 0;
     int size_x = 0;
-
+    int all_mines = 1;
+    int all_showed = 0;
+    bool is_game_over = false;
     while (window.isOpen()) {
         mousePoz = Mouse::getPosition(window);
         Event event;
@@ -285,26 +294,33 @@ int main() {
             } else {
                 textbox2.setSelected(false);
             }
+            all_showed = 0;
             if (startButton.get_shape().getGlobalBounds().contains(mousePoz.x, mousePoz.y)) {
                 if(sscanf(textbox1.getText().c_str(), "%d", &size_y) == 1 && sscanf(textbox2.getText().c_str(), "%d", &size_x) == 1) {
                     init = false; //text1 - y, text2 - x
                     field_generate(&cells, size_y, size_x, arial);
                 }
-            }
-            if (!init) for (int i = 0; i < size_y; i++)
-                for (int j = 0; j < size_x; j++)
+            } else if (!init) for (int i = 0; i < size_y; i++)
+                for (int j = 0; j < size_x; j++) {
+                    if (cells[i][j]->is_show()) all_showed++;
                     if (cells[i][j]->get_shape().getGlobalBounds().contains(mousePoz.x, mousePoz.y)) {
                         cells[i][j]->show();
                         if (first_click) {
                             first_click = false;
-                            cout << j << i << size_y << size_x;
-                            mines_spawn(&cells, j, i, size_y, size_x);
-                            mines_recursion(&cells, j, i, size_y, size_x, 0);
+                            //cout << j << i << size_y << size_x;
+                            mines_spawn(&cells, j, i, size_y, size_x, &all_mines);
                         }
+                        if (cells[i][j]->get_amount() == 0) mines_recursion(&cells, j, i, size_y, size_x, 0);
+                        if (cells[i][j]->is_mine()) is_game_over = true;
                     }
+                }
         }
         window.clear(Color(255, 255, 255));
-        if (init) {
+        if (is_game_over) {
+            window.draw(gameover);
+        } else if (size_x*size_y-all_showed == all_mines) {
+            window.draw(winn);
+        } else if (init) {
             window.draw(start);
             window.draw(startButton.get_shape());
             window.draw(onstartbutton);
@@ -333,11 +349,13 @@ int main() {
 
 // }
 
-void mines_spawn(Cell ****field, int x, int y, int height, int width) {
+void mines_spawn(Cell ****field, int x, int y, int height, int width, int *all_mines) {
+    (*all_mines) = 0;
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
             if (rand()%4 == 0 && (x != j && y != i)) {
                 (*field)[i][j]->set_mine();
+                (*all_mines)++;
             }
         }
     }
@@ -358,29 +376,29 @@ void mines_spawn(Cell ****field, int x, int y, int height, int width) {
 void mines_recursion(Cell ****field, int x, int y, int height, int width, int direction) { // 0-all  1-not up  2-not down  3-not left  4-not right
         if (is_in(x, 0, width) && is_in(y-1, 0, height) && direction != 1)
             if (!((*field)[y-1][x]->is_mine()) && !((*field)[y-1][x]->is_show())) {
+                (*field)[y-1][x]->show();
                 if ((*field)[y-1][x]->get_amount() == 0) {
-                    (*field)[y-1][x]->show();
                     mines_recursion(field, x, y-1, height, width, 2);
                 }
             }
         if (is_in(x, 0, width) && is_in(y+1, 0, height) && direction != 2)
             if (!((*field)[y+1][x]->is_mine()) && !((*field)[y+1][x]->is_show())) {
+                (*field)[y+1][x]->show();
                 if ((*field)[y+1][x]->get_amount() == 0) {
-                    (*field)[y+1][x]->show();
                     mines_recursion(field, x, y+1, height, width, 1);
                 }
             }
         if (is_in(x-1, 0, width) && is_in(y, 0, height) && direction != 3)
             if (!((*field)[y][x-1]->is_mine()) && !((*field)[y][x-1]->is_show())) {
+                (*field)[y][x-1]->show();
                 if ((*field)[y][x-1]->get_amount() == 0) {
-                    (*field)[y][x-1]->show();
                     mines_recursion(field, x-1, y, height, width, 4);
                 }
             }
         if (is_in(x+1, 0, width) && is_in(y, 0, height) && direction != 4)
             if (!((*field)[y][x+1]->is_mine()) && !((*field)[y][x+1]->is_show())) {
+                (*field)[y][x+1]->show();
                 if ((*field)[y][x+1]->get_amount() == 0) {
-                    (*field)[y][x+1]->show();
                     mines_recursion(field, x+1, y, height, width, 3);
                 }
             }
